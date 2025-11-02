@@ -14,4 +14,3 @@ pub fn write_contract_balance(env: &Env, amount: &i128) {
         .persistent()
         .set(&DataKey::ContractBalance, amount);
 }
-

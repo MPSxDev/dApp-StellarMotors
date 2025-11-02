@@ -10,4 +10,3 @@ pub fn token_transfer(env: &Env, from: &Address, to: &Address, amount: &i128) {
     let token = token::TokenClient::new(env, &token_address);
     token.transfer(from, to, amount);
 }
-

@@ -16,5 +16,3 @@ pub(crate) fn write_admin(env: &Env, admin: &Address) {
     let key = DataKey::Admin;
     env.storage().instance().set(&key, admin);
 }
-
-

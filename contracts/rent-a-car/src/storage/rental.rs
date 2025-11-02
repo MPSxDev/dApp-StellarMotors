@@ -17,5 +17,3 @@ pub(crate) fn read_rental(env: &Env, renter: &Address, car_owner: &Address) -> R
 pub(crate) fn remove_rental(env: &Env, renter: &Address, car_owner: &Address) {
     env.storage().instance().remove(&DataKey::Rental(renter.clone(), car_owner.clone()));
 }
-
-

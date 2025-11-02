@@ -13,5 +13,3 @@ pub(crate) fn write_token(env: &Env, token: &Address) {
         .instance()
         .set(&DataKey::Token, &token);
 }
-
-

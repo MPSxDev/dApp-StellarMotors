@@ -17,5 +17,3 @@ pub(crate) fn write_car(env: &Env, owner: &Address, car: &Car) {
 pub(crate) fn remove_car(env: &Env, owner: &Address) {
     env.storage().instance().remove(&DataKey::Car(owner.clone()));
 }
-
-
