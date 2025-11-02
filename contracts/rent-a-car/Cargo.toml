@@ -1,0 +1,11 @@
+[package]
+name = "rent-a-car"
+version = "0.0.1"
+edition = "2021"
+description = "Admin sets up cars, anyone can rent a car"
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
