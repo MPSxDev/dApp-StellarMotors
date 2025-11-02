@@ -26,13 +26,19 @@ pub fn test_payout_owner_successfully() {
     env.mock_all_auths();
     contract.rental(&renter, &owner, &total_days, &amount);
 
+    // Note: With commission feature, the contract balance includes commission.
+    // Since commission defaults to 0, the balance should equal the amount.
     let contract_balance = env.as_contract(&contract.address, || read_contract_balance(&env));
     assert_eq!(contract_balance, amount);
+
+    // 🚗 Retiro de owners restringido: El auto debe estar devuelto primero
+    env.mock_all_auths();
+    contract.end_rental(&renter, &owner);
 
     env.mock_all_auths();
     contract.payout_owner(&owner, &amount);
 
-    let car = env.as_contract(&contract.address, || read_car(&env, &owner));
+    let car = env.as_contract(&contract.address, || read_car(&env, &owner).unwrap());
     assert_eq!(car.available_to_withdraw, 0);
 
     let contract_balance = env.as_contract(&contract.address, || read_contract_balance(&env));

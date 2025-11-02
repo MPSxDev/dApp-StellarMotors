@@ -14,10 +14,9 @@ pub fn test_remove_car_deletes_from_storage() {
         has_car(&env, &owner)
     }));
 
+    env.mock_all_auths();
     contract.remove_car(&owner);
     assert!(!env.as_contract(&contract.address, || {
         has_car(&env, &owner)
     }));
 }
-
-

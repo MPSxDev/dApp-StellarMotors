@@ -1,11 +1,13 @@
 use soroban_sdk::{Address, Env};
 
 use crate::storage::types::storage::DataKey;
+use crate::storage::types::errors::RentACarError;
 
-pub(crate) fn read_token(env: &Env) -> Address {
+pub(crate) fn read_token(env: &Env) -> Result<Address, RentACarError> {
     env.storage()
         .instance()
-        .get(&DataKey::Token).unwrap()
+        .get(&DataKey::Token)
+        .ok_or(RentACarError::NotInitialized)
 }
 
 pub(crate) fn write_token(env: &Env, token: &Address) {

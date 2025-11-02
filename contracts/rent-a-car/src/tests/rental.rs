@@ -26,14 +26,21 @@ pub fn test_rental_car_successfully() {
     env.mock_all_auths();
     contract.rental(&renter, &owner, &total_days, &amount);
 
+    // 💰 Depósito + Comisión: El balance del contrato incluye el depósito y la comisión
+    // Como la comisión por defecto es 0, el balance será igual al amount
     let updated_contract_balance = env.as_contract(&contract.address, || read_contract_balance(&env));
     assert_eq!(updated_contract_balance, amount);
 
-    let car = env.as_contract(&contract.address, || read_car(&env, &owner));
+    let car = env.as_contract(&contract.address, || read_car(&env, &owner).unwrap());
     assert_eq!(car.car_status, CarStatus::Rented);
     assert_eq!(car.available_to_withdraw, amount);
 
-    let rental = env.as_contract(&contract.address, || read_rental(&env, &renter, &owner));
+    let rental = env.as_contract(&contract.address, || read_rental(&env, &renter, &owner).unwrap());
     assert_eq!(rental.total_days_to_rent, total_days);
     assert_eq!(rental.amount, amount);
+    assert!(rental.start_time >= 0);
+    assert!(rental.end_time > rental.start_time);
+    // Verify end_time is approximately start_time + (days * 86400 seconds)
+    let expected_end_time = rental.start_time + (total_days as u64 * 86400);
+    assert_eq!(rental.end_time, expected_end_time);
 }

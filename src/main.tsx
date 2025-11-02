@@ -5,6 +5,7 @@ import App from "./App.tsx";
 import "@stellar/design-system/build/styles.min.css";
 import { BrowserRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { StellarAccountProvider } from "./providers/StellarAccountProviders";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -19,7 +20,9 @@ createRoot(document.getElementById("root") as HTMLElement).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <App />
+        <StellarAccountProvider>
+          <App />
+        </StellarAccountProvider>
       </BrowserRouter>
     </QueryClientProvider>
   </StrictMode>,

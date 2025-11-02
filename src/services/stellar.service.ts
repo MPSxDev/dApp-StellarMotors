@@ -1,10 +1,16 @@
-import { Horizon, Networks } from "@stellar/stellar-sdk";
+import {
+  Horizon,
+  Networks,
+  TransactionBuilder,
+  contract,
+} from "@stellar/stellar-sdk";
 import {
   STELLAR_NETWORK,
   HORIZON_NETWORK_PASSPHRASE,
   HORIZON_URL,
   SOROBAN_RPC_URL,
   STELLAR_FRIENDBOT_URL,
+  CONTRACT_ADDRESS,
 } from "../utils/constants";
 
 export class StellarService {
@@ -14,6 +20,7 @@ export class StellarService {
   private networkPassphrase: string;
   private friendBotUrl: string;
   private sorobanRpcUrl: string;
+  private contractAddress: string;
 
   constructor() {
     this.network = (STELLAR_NETWORK as string) || "testnet";
@@ -24,6 +31,7 @@ export class StellarService {
       (HORIZON_NETWORK_PASSPHRASE as string) ||
       this.getDefaultNetworkPassphrase();
     this.sorobanRpcUrl = (SOROBAN_RPC_URL as string) || "";
+    this.contractAddress = (CONTRACT_ADDRESS as string) || "";
 
     this.server = new Horizon.Server(this.horizonUrl, {
       allowHttp: this.isLocalNetwork(),
@@ -133,4 +141,69 @@ export class StellarService {
       this.horizonUrl.startsWith("http://")
     );
   }
+
+  /**
+   * Build a contract client for interacting with smart contracts
+   */
+  async buildClient<T = unknown>(publicKey: string): Promise<T> {
+    const client = await contract.Client.from({
+      contractId: this.contractAddress,
+      rpcUrl: this.sorobanRpcUrl,
+      networkPassphrase: this.networkPassphrase,
+      publicKey,
+    });
+
+    return client as T;
+  }
+
+  /**
+   * Submit a transaction to the network
+   */
+  async submitTransaction(xdr: string): Promise<string | undefined> {
+    try {
+      const transaction = TransactionBuilder.fromXDR(
+        xdr,
+        this.networkPassphrase,
+      );
+      const result = await this.server.submitTransaction(transaction);
+
+      return result.hash;
+    } catch (error) {
+      console.error(error);
+      if (
+        error &&
+        typeof error === "object" &&
+        "response" in error &&
+        error.response &&
+        typeof error.response === "object" &&
+        "data" in error.response
+      ) {
+        const errorData = error.response.data as {
+          extras?: { result_codes?: unknown };
+        };
+        if (errorData.extras?.result_codes) {
+          console.error(
+            "❌ Error en la transacción:",
+            errorData.extras.result_codes,
+          );
+        } else {
+          console.error("❌ Error general:", error);
+        }
+      } else {
+        console.error("❌ Error general:", error);
+      }
+    }
+  }
+
+  /**
+   * Get environment configuration for wallet kit
+   */
+  environment(): { rpc: string; networkPassphrase: string } {
+    return {
+      rpc: this.sorobanRpcUrl,
+      networkPassphrase: this.networkPassphrase,
+    };
+  }
 }
+
+export const stellarService = new StellarService();

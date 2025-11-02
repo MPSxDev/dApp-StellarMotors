@@ -4,6 +4,10 @@ version = "0.0.1"
 edition = "2021"
 description = "Admin sets up cars, anyone can rent a car"
 
+[lib]
+crate-type = ["cdylib"]
+doctest = false
+
 [dependencies]
 soroban-sdk = { workspace = true }
 
