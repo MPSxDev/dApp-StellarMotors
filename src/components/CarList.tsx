@@ -22,6 +22,7 @@ export const CarsList = ({ cars }: CarsListProps) => {
   const [selectedCarForRental, setSelectedCarForRental] = useState<ICar | null>(null);
   const [carCommissions, setCarCommissions] = useState<Record<string, number>>({}); // Commission per day in XLM
   const [availableToWithdraw, setAvailableToWithdraw] = useState<Record<string, number>>({}); // Available to withdraw per car in stroops
+  const [userRentedCars, setUserRentedCars] = useState<Set<string>>(new Set()); // Track which cars are rented by current user (by ownerAddress)
 
   // Fetch commission data, status, and available to withdraw from contract for all cars
   // Also updates car status to ensure it's always fresh from the contract
@@ -74,6 +75,23 @@ export const CarsList = ({ cars }: CarsListProps) => {
               currentStatus = CarStatus.RENTED;
             }
             
+            // Check if current user has rented this car (for all cars when user is renter)
+            // This check is important even if local status is stale
+            let isRentedByUser = false;
+            if (selectedRole === UserRole.RENTER) {
+              try {
+                await contractClient.get_rental({
+                  renter: walletAddress,
+                  owner: car.ownerAddress,
+                });
+                // If get_rental succeeds, the user has rented this car
+                isRentedByUser = true;
+              } catch (rentalError: any) {
+                // If get_rental fails, the user hasn't rented this car
+                isRentedByUser = false;
+              }
+            }
+            
             // Update car status if it changed
             if (car.status !== currentStatus) {
               setCars((prevCars) =>
@@ -109,7 +127,8 @@ export const CarsList = ({ cars }: CarsListProps) => {
               owner: car.ownerAddress, 
               commission: commissionPerDay,
               availableToWithdraw: availableToWithdrawStroops,
-              status: currentStatus
+              status: currentStatus,
+              isRentedByUser
             };
           } catch (error: any) {
             const errorMsg = error?.message || String(error);
@@ -121,7 +140,7 @@ export const CarsList = ({ cars }: CarsListProps) => {
               return null; // Car was removed from contract
             }
             console.error(`Error fetching data for car ${car.ownerAddress}:`, error);
-            return { owner: car.ownerAddress, commission: 0, availableToWithdraw: 0, status: car.status };
+            return { owner: car.ownerAddress, commission: 0, availableToWithdraw: 0, status: car.status, isRentedByUser: false };
           }
         });
 
@@ -136,11 +155,18 @@ export const CarsList = ({ cars }: CarsListProps) => {
         
         const commissionMap: Record<string, number> = {};
         const withdrawMap: Record<string, number> = {};
-        results.forEach(({ owner, commission, availableToWithdraw }) => {
+        const rentedCarsSet = new Set<string>();
+        
+        results.forEach(({ owner, commission, availableToWithdraw, isRentedByUser }) => {
           commissionMap[owner] = commission;
           withdrawMap[owner] = availableToWithdraw;
+          if (isRentedByUser) {
+            rentedCarsSet.add(owner);
+          }
         });
         
+        // Batch update rental tracking state
+        setUserRentedCars(rentedCarsSet);
         setCarCommissions(commissionMap);
         setAvailableToWithdraw(withdrawMap);
       } catch (error) {
@@ -156,7 +182,7 @@ export const CarsList = ({ cars }: CarsListProps) => {
     }, 30000);
     
     return () => clearInterval(interval);
-  }, [cars, walletAddress, setCars]);
+  }, [cars, walletAddress, setCars, selectedRole]);
 
   const handleDelete = async (owner: string) => {
     if (!confirm("Are you sure you want to remove this car?")) return;
@@ -229,6 +255,12 @@ export const CarsList = ({ cars }: CarsListProps) => {
           : c,
       ),
     );
+    // Mark this car as rented by current user
+    setUserRentedCars((prev) => {
+      const updated = new Set(prev);
+      updated.add(car.ownerAddress);
+      return updated;
+    });
     setHashId(txHash as string);
     setSelectedCarForRental(null); // Close modal
   };
@@ -255,6 +287,12 @@ export const CarsList = ({ cars }: CarsListProps) => {
           : c,
       ),
     );
+    // Remove this car from user's rented cars
+    setUserRentedCars((prev) => {
+      const updated = new Set(prev);
+      updated.delete(owner);
+      return updated;
+    });
     setHashId(txHash as string);
   };
 
@@ -326,18 +364,8 @@ export const CarsList = ({ cars }: CarsListProps) => {
     }
 
     if (selectedRole === UserRole.RENTER) {
-      if (car.status === CarStatus.AVAILABLE) {
-        return (
-          <button
-            type="button"
-            onClick={() => setSelectedCarForRental(car)}
-            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#00D4FF] to-[#00B8E6] hover:from-[#00B8E6] hover:to-[#0099CC] text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
-          >
-            <Icon.Car01 className="w-5 h-5" />
-            <span>Rent Now</span>
-          </button>
-        );
-      } else if (car.status === CarStatus.RENTED) {
+      // FIRST check if current user has rented this car - show Return Vehicle if they have
+      if (userRentedCars.has(car.ownerAddress)) {
         return (
           <button
             type="button"
@@ -349,6 +377,20 @@ export const CarsList = ({ cars }: CarsListProps) => {
           </button>
         );
       }
+      // Only show "Rent Now" if car is available AND user hasn't rented it
+      else if (car.status === CarStatus.AVAILABLE) {
+        return (
+          <button
+            type="button"
+            onClick={() => setSelectedCarForRental(car)}
+            className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#00D4FF] to-[#00B8E6] hover:from-[#00B8E6] hover:to-[#0099CC] text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105"
+          >
+            <Icon.Car01 className="w-5 h-5" />
+            <span>Rent Now</span>
+          </button>
+        );
+      }
+      // If car is rented by someone else, don't show any button
     }
 
     return null;
