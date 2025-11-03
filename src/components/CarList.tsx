@@ -436,10 +436,18 @@ export const CarsList = ({ cars }: CarsListProps) => {
     );
   }
 
+  // Deduplicate cars by ownerAddress to prevent duplicate keys (defensive measure)
+  const uniqueCars = cars.reduce((acc, car) => {
+    if (!acc.find(c => c.ownerAddress === car.ownerAddress)) {
+      acc.push(car);
+    }
+    return acc;
+  }, [] as ICar[]);
+
   return (
     <div data-test="cars-list" className="w-full">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
-        {cars.map((car) => (
+        {uniqueCars.map((car) => (
           <div
             key={car.ownerAddress}
             className="group relative bg-white rounded-2xl border border-gray-200 shadow-md hover:shadow-2xl transition-all duration-300 overflow-hidden"

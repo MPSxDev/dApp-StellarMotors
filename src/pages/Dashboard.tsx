@@ -154,16 +154,24 @@ export default function Dashboard() {
         (car): car is ICar => car !== null
       );
 
+      // Deduplicate cars by ownerAddress to prevent duplicate keys in React
+      const uniqueCars = fetchedCars.reduce((acc, car) => {
+        if (!acc.find(c => c.ownerAddress === car.ownerAddress)) {
+          acc.push(car);
+        }
+        return acc;
+      }, [] as ICar[]);
+
       // Always update cars list, even if empty (to clear stale data)
-      setCars(fetchedCars);
+      setCars(uniqueCars);
       
       // Save owner addresses for future syncs
       ownerAddresses.forEach(addr => addOwnerAddress(addr));
       
-      if (fetchedCars.length > 0) {
+      if (uniqueCars.length > 0) {
         setShowSyncModal(false);
         setSyncAddresses("");
-        console.log(`Successfully synced ${fetchedCars.length} car(s) from contract`);
+        console.log(`Successfully synced ${uniqueCars.length} car(s) from contract`);
       } else if (ownerAddressesToUse && ownerAddressesToUse.length > 0) {
         // Only show alert if user manually triggered sync with addresses
         alert("No cars found for the provided owner addresses.");
@@ -277,7 +285,13 @@ export default function Dashboard() {
             status,
           };
 
-          setCars([foundCar]);
+          // Check if car already exists before adding to prevent duplicates
+          setCars((prevCars) => {
+            if (prevCars.find(c => c.ownerAddress === walletAddress)) {
+              return prevCars; // Car already exists, don't duplicate
+            }
+            return [...prevCars, foundCar];
+          });
           addOwnerAddress(walletAddress);
         } catch (error: any) {
           // Connected wallet doesn't have a car or error occurred
@@ -350,7 +364,16 @@ export default function Dashboard() {
       status: CarStatus.AVAILABLE,
     };
 
-    setCars((prevCars) => [...prevCars, newCar]);
+    // Check if car already exists before adding to prevent duplicates
+    setCars((prevCars) => {
+      if (prevCars.find(c => c.ownerAddress === ownerAddress)) {
+        // Car already exists, update it instead of duplicating
+        return prevCars.map(c => 
+          c.ownerAddress === ownerAddress ? newCar : c
+        );
+      }
+      return [...prevCars, newCar];
+    });
     setHashId(txHash as string);
     closeModal();
   };
