@@ -170,7 +170,6 @@ impl RentACarContractTrait for RentACarContract {
 
     fn payout_owner(env: &Env, owner: Address, amount: i128) {
         owner.require_auth();
-        env.current_contract_address().require_auth();
     
         let mut car = read_car(&env, &owner).unwrap_or_else(|_| panic!("Car not found"));
         
