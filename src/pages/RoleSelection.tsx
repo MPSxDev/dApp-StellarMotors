@@ -19,7 +19,7 @@ interface RoleCardProps {
 }
 
 const RoleCard = ({
-  role,
+  role: _role,
   icon,
   title,
   description,

@@ -88,9 +88,9 @@ export const CreateCarForm = ({
     min?: number,
     max?: number,
   ) => {
-    const inputValue = type === "number" 
+    const inputValue: string | number = type === "number"
       ? (numberInputs[name] ?? String(formData[name as keyof CreateCar] ?? ""))
-      : (formData[name as keyof CreateCar] ?? "");
+      : String(formData[name as keyof CreateCar] ?? "");
     
     return (
       <div>

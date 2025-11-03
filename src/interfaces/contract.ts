@@ -15,6 +15,14 @@ export interface IRentACarContract extends IBaseContractClient {
     token: string;
   }) => Promise<this>;
 
+  set_commission: ({
+    commission,
+  }: {
+    commission: number;
+  }) => Promise<this>;
+
+  get_commission: () => Promise<number>;
+
   add_car: ({
     owner,
     brand,
