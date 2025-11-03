@@ -4,5 +4,6 @@ pub mod rental;
 pub mod token;
 pub mod contract_balance;
 pub mod commission;
+pub mod car_owners;
 pub mod structs;
 pub mod types;

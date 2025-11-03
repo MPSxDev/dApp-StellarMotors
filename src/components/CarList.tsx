@@ -21,26 +21,74 @@ export const CarsList = ({ cars }: CarsListProps) => {
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const [selectedCarForRental, setSelectedCarForRental] = useState<ICar | null>(null);
   const [carCommissions, setCarCommissions] = useState<Record<string, number>>({}); // Commission per day in XLM
+  const [availableToWithdraw, setAvailableToWithdraw] = useState<Record<string, number>>({}); // Available to withdraw per car in stroops
 
-  // Fetch commission data from contract for all cars
+  // Fetch commission data, status, and available to withdraw from contract for all cars
+  // Also updates car status to ensure it's always fresh from the contract
   useEffect(() => {
-    const fetchCommissions = async () => {
+    const fetchCarData = async () => {
       if (!walletAddress || cars.length === 0) return;
 
       try {
         const contractClient =
           await stellarService.buildClient<IRentACarContract>(walletAddress);
         
-        const commissionPromises = cars.map(async (car) => {
+        const dataPromises = cars.map(async (car) => {
           try {
-            const carDataResponse = await contractClient.get_car({ owner: car.ownerAddress });
+            // Check if car still exists in contract
+            const hasCarResponse = await contractClient.has_car({ owner: car.ownerAddress });
+            const hasCar = (hasCarResponse as any)?.result ?? hasCarResponse ?? false;
+            if (!hasCar) {
+              console.log(`Car ${car.ownerAddress} no longer exists in contract`);
+              return null;
+            }
+
+            // Wrap get_car in try-catch as it may still panic
+            let carDataResponse;
+            try {
+              carDataResponse = await contractClient.get_car({ owner: car.ownerAddress });
+            } catch (getCarError: any) {
+              const errorMsg = getCarError?.message || String(getCarError);
+              if (errorMsg.includes("UnreachableCodeReached") || 
+                  errorMsg.includes("Car not found") ||
+                  errorMsg.includes("not found")) {
+                console.log(`Car ${car.ownerAddress} not found (get_car panic)`);
+                return null;
+              }
+              throw getCarError; // Re-throw if it's a different error
+            }
             // The data is in the 'result' property of the response
             const carData = (carDataResponse as any).result || carDataResponse;
-            console.log("Car data from contract:", carData);
+            
+            // Get fresh status from contract
+            const statusResponse = await contractClient.get_car_status({ owner: car.ownerAddress });
+            const statusRaw = (statusResponse as any).result ?? statusResponse;
+            
+            // Parse status correctly
+            let currentStatus = CarStatus.AVAILABLE;
+            if (typeof statusRaw === 'string') {
+              currentStatus = statusRaw === "Rented" ? CarStatus.RENTED : CarStatus.AVAILABLE;
+            } else if (typeof statusRaw === 'number') {
+              currentStatus = statusRaw === 1 ? CarStatus.RENTED : CarStatus.AVAILABLE;
+            } else if (statusRaw?.name === "Rented" || statusRaw?.value === 1) {
+              currentStatus = CarStatus.RENTED;
+            }
+            
+            // Update car status if it changed
+            if (car.status !== currentStatus) {
+              setCars((prevCars) =>
+                prevCars.map((c) =>
+                  c.ownerAddress === car.ownerAddress
+                    ? { ...c, status: currentStatus }
+                    : c
+                )
+              );
+            }
             
             // Contract returns BigInt values - convert to numbers
             const pricePerDayRaw = carData.price_per_day ?? carData.pricePerDay;
             const commissionPercentageRaw = carData.commission_percentage ?? carData.commissionPercentage ?? 0;
+            const availableToWithdrawRaw = carData.available_to_withdraw ?? 0;
             
             // Convert BigInt to number (BigInt values have 'n' suffix like 500n, 1000000000n)
             const pricePerDayInStroops = typeof pricePerDayRaw === 'bigint' 
@@ -49,34 +97,66 @@ export const CarsList = ({ cars }: CarsListProps) => {
             const commissionPercentage = typeof commissionPercentageRaw === 'bigint'
               ? Number(commissionPercentageRaw)
               : Number(commissionPercentageRaw);
+            const availableToWithdrawStroops = typeof availableToWithdrawRaw === 'bigint'
+              ? Number(availableToWithdrawRaw)
+              : Number(availableToWithdrawRaw);
             
             // Calculate commission per day: (price_per_day * commission_percentage) / 10000
             const pricePerDay = pricePerDayInStroops / ONE_XLM_IN_STROOPS;
             const commissionPerDay = (pricePerDay * commissionPercentage) / 10000;
             
-            console.log(`Car ${car.ownerAddress}: price=${pricePerDay}, commission%=${commissionPercentage}, commission/day=${commissionPerDay}`);
-            
-            return { owner: car.ownerAddress, commission: commissionPerDay };
-          } catch (error) {
-            console.error(`Error fetching commission for car ${car.ownerAddress}:`, error);
-            return { owner: car.ownerAddress, commission: 0 };
+            return { 
+              owner: car.ownerAddress, 
+              commission: commissionPerDay,
+              availableToWithdraw: availableToWithdrawStroops,
+              status: currentStatus
+            };
+          } catch (error: any) {
+            const errorMsg = error?.message || String(error);
+            if (errorMsg.includes("UnreachableCodeReached") ||
+                errorMsg.includes("not found") || 
+                errorMsg.includes("Car not found") ||
+                errorMsg.includes("VM call trapped")) {
+              console.log(`Car ${car.ownerAddress} not found in contract (may have been removed)`);
+              return null; // Car was removed from contract
+            }
+            console.error(`Error fetching data for car ${car.ownerAddress}:`, error);
+            return { owner: car.ownerAddress, commission: 0, availableToWithdraw: 0, status: car.status };
           }
         });
 
-        const results = await Promise.all(commissionPromises);
+        const results = (await Promise.all(dataPromises)).filter((r): r is NonNullable<typeof r> => r !== null);
+        
+        // Remove cars that no longer exist in contract
+        const existingOwners = new Set(results.map(r => r.owner));
+        const removedCars = cars.filter(c => !existingOwners.has(c.ownerAddress));
+        if (removedCars.length > 0) {
+          setCars((prevCars) => prevCars.filter(c => existingOwners.has(c.ownerAddress)));
+        }
+        
         const commissionMap: Record<string, number> = {};
-        results.forEach(({ owner, commission }) => {
+        const withdrawMap: Record<string, number> = {};
+        results.forEach(({ owner, commission, availableToWithdraw }) => {
           commissionMap[owner] = commission;
+          withdrawMap[owner] = availableToWithdraw;
         });
         
         setCarCommissions(commissionMap);
+        setAvailableToWithdraw(withdrawMap);
       } catch (error) {
-        console.error("Error fetching commissions:", error);
+        console.error("Error fetching car data:", error);
       }
     };
 
-    void fetchCommissions();
-  }, [cars, walletAddress]);
+    void fetchCarData();
+    
+    // Refresh car status every 30 seconds to keep it up to date
+    const interval = setInterval(() => {
+      void fetchCarData();
+    }, 30000);
+    
+    return () => clearInterval(interval);
+  }, [cars, walletAddress, setCars]);
 
   const handleDelete = async (owner: string) => {
     if (!confirm("Are you sure you want to remove this car?")) return;
@@ -95,16 +175,33 @@ export const CarsList = ({ cars }: CarsListProps) => {
   };
 
   const handlePayout = async (owner: string, amount: number) => {
-    const contractClient =
-      await stellarService.buildClient<IRentACarContract>(walletAddress);
+    if (!confirm(`Are you sure you want to withdraw ${(amount / ONE_XLM_IN_STROOPS).toFixed(7)} XLM?`)) {
+      return;
+    }
 
-    const result = await contractClient.payout_owner({ owner, amount });
-    const xdr = result.toXDR();
+    try {
+      const contractClient =
+        await stellarService.buildClient<IRentACarContract>(walletAddress);
 
-    const signedTx = await walletService.signTransaction(xdr);
-    const txHash = await stellarService.submitTransaction(signedTx.signedTxXdr);
+      const result = await contractClient.payout_owner({ owner, amount });
+      const xdr = result.toXDR();
 
-    setHashId(txHash as string);
+      const signedTx = await walletService.signTransaction(xdr);
+      const txHash = await stellarService.submitTransaction(signedTx.signedTxXdr);
+
+      setHashId(txHash as string);
+      
+      // Refresh available balance after withdrawal
+      setAvailableToWithdraw(prev => ({
+        ...prev,
+        [owner]: 0
+      }));
+      
+      alert(`Successfully withdrawn ${(amount / ONE_XLM_IN_STROOPS).toFixed(7)} XLM!`);
+    } catch (error) {
+      console.error("Error withdrawing funds:", error);
+      alert("Failed to withdraw funds. Please try again.");
+    }
   };
 
   const handleRent = async (totalDaysToRent: number) => {
@@ -203,7 +300,19 @@ export const CarsList = ({ cars }: CarsListProps) => {
     }
 
     if (selectedRole === UserRole.OWNER) {
-      const amount = car.pricePerDay * 3 * ONE_XLM_IN_STROOPS;
+      // Only show withdraw button if:
+      // 1. Current user is the owner of this car
+      // 2. Car is available (not rented)
+      // 3. There are funds available to withdraw
+      const isOwnerOfThisCar = walletAddress === car.ownerAddress;
+      const hasAvailableFunds = (availableToWithdraw[car.ownerAddress] ?? 0) > 0;
+      const isCarAvailable = car.status === CarStatus.AVAILABLE;
+      
+      if (!isOwnerOfThisCar || !hasAvailableFunds || !isCarAvailable) {
+        return null;
+      }
+      
+      const amount = availableToWithdraw[car.ownerAddress];
       return (
         <button
           type="button"

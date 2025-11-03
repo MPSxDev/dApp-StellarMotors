@@ -1,4 +1,4 @@
-use soroban_sdk::{contract, contractimpl, Address, Env};
+use soroban_sdk::{contract, contractimpl, Address, Env, String, Vec};
 use crate::interface::contract::RentACarContractTrait;
 use crate::storage::{
     admin::{write_admin, read_admin, has_admin},
@@ -7,6 +7,7 @@ use crate::storage::{
     rental::{write_rental, read_rental, remove_rental, has_rental as storage_has_rental},
     contract_balance::{read_contract_balance, write_contract_balance},
     commission::{read_commission, write_commission, read_admin_commission_balance, write_admin_commission_balance},
+    car_owners::{add_car_owner, remove_car_owner, get_car_owners},
 };
 use crate::storage::types::car_status::CarStatus;
 use crate::storage::structs::car::Car;
@@ -39,13 +40,23 @@ impl RentACarContractTrait for RentACarContract {
         read_admin(env).unwrap_or_else(|_| panic!("Contract not initialized"))
     }
 
-    fn add_car(env: &Env, owner: Address, price_per_day: i128, commission_percentage: i128) {
+    fn add_car(env: &Env, owner: Address, brand: String, model: String, color: String, passengers: u32, ac: bool, price_per_day: i128, commission_percentage: i128) {
         let admin = read_admin(env).unwrap_or_else(|_| panic!("Contract not initialized"));
         admin.require_auth();
         
         validate_price(price_per_day).unwrap_or_else(|e| panic!("Invalid price: {:?}", e));
         
+        // Validate passengers is positive
+        if passengers == 0 {
+            panic!("Passengers must be greater than 0");
+        }
+        
         let car = Car {
+            brand,
+            model,
+            color,
+            passengers,
+            ac,
             price_per_day,
             car_status: CarStatus::Available,
             available_to_withdraw: 0,
@@ -53,6 +64,9 @@ impl RentACarContractTrait for RentACarContract {
         };
 
         write_car(env, &owner, &car);
+        
+        // Register owner in the car owners list
+        add_car_owner(env, &owner);
     }
 
     fn get_car_status(env: &Env, owner: Address) -> CarStatus {
@@ -84,8 +98,15 @@ impl RentACarContractTrait for RentACarContract {
             panic!("Rental already exists");
         }
 
-        // Get commission and calculate total amount (deposit + commission)
-        let commission = read_commission(env);
+        // Calculate commission based on car's commission_percentage
+        // commission_percentage is in basis points (500 = 5%)
+        let commission = (amount
+            .checked_mul(car.commission_percentage)
+            .unwrap_or_else(|| panic!("Commission calculation overflow")))
+            .checked_div(10000_i128)
+            .unwrap_or_else(|| panic!("Division by zero"));
+        
+        // Calculate total amount (deposit + commission)
         let total_amount = amount
             .checked_add(commission)
             .unwrap_or_else(|| panic!("Amount overflow when adding commission"));
@@ -142,6 +163,9 @@ impl RentACarContractTrait for RentACarContract {
         }
         
         remove_car_storage(env, &owner);
+        
+        // Remove owner from the car owners list
+        remove_car_owner(env, &owner);
     }
 
     fn payout_owner(env: &Env, owner: Address, amount: i128) {
@@ -263,5 +287,10 @@ impl RentACarContractTrait for RentACarContract {
 
     fn get_admin_commission_balance(env: &Env) -> i128 {
         read_admin_commission_balance(env)
+    }
+
+    // Get all car owner addresses
+    fn get_all_car_owners(env: &Env) -> Vec<Address> {
+        get_car_owners(env)
     }
 }

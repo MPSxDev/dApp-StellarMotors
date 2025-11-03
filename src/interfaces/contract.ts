@@ -17,21 +17,38 @@ export interface IRentACarContract extends IBaseContractClient {
 
   add_car: ({
     owner,
+    brand,
+    model,
+    color,
+    passengers,
+    ac,
     price_per_day,
     commission_percentage,
   }: {
     owner: string;
+    brand: string;
+    model: string;
+    color: string;
+    passengers: number;
+    ac: boolean;
     price_per_day: number;
     commission_percentage: number; // Commission percentage in basis points (100 = 1%, 500 = 5%, etc.)
   }) => Promise<this>;
 
   get_car_status: ({ owner }: { owner: string }) => Promise<CarStatus>;
 
+  has_car: ({ owner }: { owner: string }) => Promise<boolean>;
+
   get_car: ({
     owner,
   }: {
     owner: string;
   }) => Promise<{
+    brand: string;
+    model: string;
+    color: string;
+    passengers: number;
+    ac: boolean;
     price_per_day: number;
     car_status: CarStatus;
     available_to_withdraw: number;
@@ -90,4 +107,6 @@ export interface IRentACarContract extends IBaseContractClient {
   get_admin_commission_balance: () => Promise<number>;
 
   withdraw_admin_commissions: () => Promise<this>;
+
+  get_all_car_owners: () => Promise<string[]>;
 }

@@ -21,8 +21,14 @@ pub fn test_payout_owner_fails_when_car_is_rented() {
     env.mock_all_auths();
     token_admin.mint(&renter, &amount_mint);
 
+    let brand = soroban_sdk::String::from_slice(&env, "TestBrand");
+    let model = soroban_sdk::String::from_slice(&env, "TestModel");
+    let color = soroban_sdk::String::from_slice(&env, "Black");
+    let passengers = 4_u32;
+    let ac = true;
+
     env.mock_all_auths();
-    contract.add_car(&owner, &price_per_day, &500_i128); // 5% commission
+    contract.add_car(&owner, &brand, &model, &color, &passengers, &ac, &price_per_day, &500_i128); // 5% commission
     
     env.mock_all_auths();
     contract.rental(&renter, &owner, &total_days, &amount);
@@ -52,8 +58,14 @@ pub fn test_payout_owner_succeeds_after_end_rental() {
     env.mock_all_auths();
     token_admin.mint(&renter, &amount_mint);
 
+    let brand = soroban_sdk::String::from_slice(&env, "TestBrand");
+    let model = soroban_sdk::String::from_slice(&env, "TestModel");
+    let color = soroban_sdk::String::from_slice(&env, "Black");
+    let passengers = 4_u32;
+    let ac = true;
+
     env.mock_all_auths();
-    contract.add_car(&owner, &price_per_day, &500_i128); // 5% commission
+    contract.add_car(&owner, &brand, &model, &color, &passengers, &ac, &price_per_day, &500_i128); // 5% commission
     
     env.mock_all_auths();
     contract.rental(&renter, &owner, &total_days, &amount);

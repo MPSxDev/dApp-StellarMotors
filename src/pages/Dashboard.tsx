@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { AdminCommissionCard } from "../components/AdminCommissionCard";
 import { CarsList } from "../components/CarList";
 import { CreateCarForm } from "../components/CreateCarForm";
+import { DiscoverCarsForm } from "../components/DiscoverCarsForm";
 import Modal from "../components/Modal";
 import StellarExpertLink from "../components/StellarExpertLink";
 import useModal from "../hooks/useModal";
@@ -38,7 +39,7 @@ export default function Dashboard() {
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [syncAddresses, setSyncAddresses] = useState<string>("");
 
-  // Sync cars from contract using owner addresses
+  // Sync cars from contract using owner addresses - always refreshes from contract
   const syncCarsFromContract = async (ownerAddressesToUse?: string[]) => {
     if (!walletAddress || isSyncing) return;
 
@@ -57,8 +58,41 @@ export default function Dashboard() {
 
       const carPromises = ownerAddresses.map(async (ownerAddress) => {
         try {
-          const carDataResponse = await contractClient.get_car({ owner: ownerAddress });
+          // First check if car exists
+          const hasCarResponse = await contractClient.has_car({ owner: ownerAddress });
+          const hasCar = (hasCarResponse as any)?.result ?? hasCarResponse ?? false;
+          if (!hasCar) {
+            console.log(`Car not found for owner ${ownerAddress}`);
+            return null;
+          }
+
+          // Wrap get_car in try-catch as it may still panic
+          let carDataResponse;
+          try {
+            carDataResponse = await contractClient.get_car({ owner: ownerAddress });
+          } catch (getCarError: any) {
+            const errorMsg = getCarError?.message || String(getCarError);
+            if (errorMsg.includes("UnreachableCodeReached") || 
+                errorMsg.includes("Car not found") ||
+                errorMsg.includes("not found")) {
+              console.log(`Car ${ownerAddress} not found (get_car panic)`);
+              return null;
+            }
+            throw getCarError; // Re-throw if it's a different error
+          }
           const carData = (carDataResponse as any).result || carDataResponse;
+          
+          // Get car status directly from contract
+          const statusResponse = await contractClient.get_car_status({ owner: ownerAddress });
+          const statusRaw = (statusResponse as any).result ?? statusResponse;
+          
+          // Extract all car data from contract
+          const brand = carData.brand ?? "Unknown";
+          const model = carData.model ?? "Vehicle";
+          const color = carData.color ?? "N/A";
+          const passengersRaw = carData.passengers ?? 4;
+          const passengers = typeof passengersRaw === 'bigint' ? Number(passengersRaw) : Number(passengersRaw);
+          const ac = carData.ac ?? false;
           
           const pricePerDayRaw = carData.price_per_day ?? carData.pricePerDay;
           const pricePerDayInStroops = typeof pricePerDayRaw === 'bigint' 
@@ -66,25 +100,37 @@ export default function Dashboard() {
             : Number(pricePerDayRaw);
           const pricePerDay = pricePerDayInStroops / ONE_XLM_IN_STROOPS;
 
-          const statusRaw = carData.car_status ?? carData.carStatus;
-          const status = statusRaw === "Rented" || statusRaw === 1 
-            ? CarStatus.RENTED 
-            : CarStatus.AVAILABLE;
-
-          // Create car with minimal info from contract
-          // Note: brand, model, color, passengers, ac are not in contract, so we use placeholders
+          // Parse status correctly - handle both string and numeric values
+          let status = CarStatus.AVAILABLE;
+          if (typeof statusRaw === 'string') {
+            status = statusRaw === "Rented" ? CarStatus.RENTED : CarStatus.AVAILABLE;
+          } else if (typeof statusRaw === 'number') {
+            status = statusRaw === 1 ? CarStatus.RENTED : CarStatus.AVAILABLE;
+          } else if (statusRaw?.name === "Rented" || statusRaw?.value === 1) {
+            status = CarStatus.RENTED;
+          }
+          
           return {
-            brand: "Unknown",
-            model: "Vehicle",
-            color: "N/A",
-            passengers: 4,
+            brand: String(brand),
+            model: String(model),
+            color: String(color),
+            passengers,
             pricePerDay,
-            ac: false,
+            ac: Boolean(ac),
             ownerAddress,
-            status,
+            status, // Always use fresh status from contract
           } as ICar;
-        } catch (error) {
-          console.error(`Error fetching car for ${ownerAddress}:`, error);
+        } catch (error: any) {
+          // Check if it's a "not found" error, panic error, or actual error
+          const errorMsg = error?.message || String(error);
+          if (errorMsg.includes("UnreachableCodeReached") ||
+              errorMsg.includes("not found") || 
+              errorMsg.includes("Car not found") ||
+              errorMsg.includes("VM call trapped")) {
+            console.log(`Car not found for owner ${ownerAddress} (expected)`);
+          } else {
+            console.error(`Error fetching car for ${ownerAddress}:`, error);
+          }
           return null;
         }
       });
@@ -93,14 +139,21 @@ export default function Dashboard() {
         (car): car is ICar => car !== null
       );
 
+      // Always update cars list, even if empty (to clear stale data)
+      setCars(fetchedCars);
+      
+      // Save owner addresses for future syncs
+      ownerAddresses.forEach(addr => addOwnerAddress(addr));
+      
       if (fetchedCars.length > 0) {
-        setCars(fetchedCars);
-        // Save owner addresses for future syncs
-        ownerAddresses.forEach(addr => addOwnerAddress(addr));
         setShowSyncModal(false);
         setSyncAddresses("");
-      } else {
+        console.log(`Successfully synced ${fetchedCars.length} car(s) from contract`);
+      } else if (ownerAddressesToUse && ownerAddressesToUse.length > 0) {
+        // Only show alert if user manually triggered sync with addresses
         alert("No cars found for the provided owner addresses.");
+      } else {
+        console.log("No cars found for stored owner addresses");
       }
     } catch (error) {
       console.error("Error syncing cars from contract:", error);
@@ -124,14 +177,15 @@ export default function Dashboard() {
     void syncCarsFromContract(addresses);
   };
 
-  // Auto-sync when wallet connects or cars array is empty
+  // Auto-sync when wallet connects - always refresh from contract
   useEffect(() => {
     if (!walletAddress || isSyncing) return;
 
     const autoSync = async () => {
       const ownerAddresses = getStoredOwnerAddresses();
       
-      // If we have stored owner addresses, try to sync
+      // Always try to sync from contract if we have stored addresses
+      // This ensures we get fresh data from the contract, not from localStorage
       if (ownerAddresses.length > 0) {
         await syncCarsFromContract();
         return;
@@ -143,10 +197,42 @@ export default function Dashboard() {
         const contractClient =
           await stellarService.buildClient<IRentACarContract>(walletAddress);
         
-        // Try to get car for the connected wallet address
+        // Check if car exists before trying to fetch
         try {
-          const carDataResponse = await contractClient.get_car({ owner: walletAddress });
+          const hasCarResponse = await contractClient.has_car({ owner: walletAddress });
+          const hasCar = (hasCarResponse as any)?.result ?? hasCarResponse ?? false;
+          if (!hasCar) {
+            console.log("Connected wallet doesn't have a car registered");
+            return;
+          }
+
+          // Wrap get_car in try-catch as it may still panic
+          let carDataResponse;
+          try {
+            carDataResponse = await contractClient.get_car({ owner: walletAddress });
+          } catch (getCarError: any) {
+            const errorMsg = getCarError?.message || String(getCarError);
+            if (errorMsg.includes("UnreachableCodeReached") || 
+                errorMsg.includes("Car not found") ||
+                errorMsg.includes("not found")) {
+              console.log("Connected wallet doesn't have a car registered (get_car panic)");
+              return;
+            }
+            throw getCarError; // Re-throw if it's a different error
+          }
           const carData = (carDataResponse as any).result || carDataResponse;
+          
+          // Get status from contract
+          const statusResponse = await contractClient.get_car_status({ owner: walletAddress });
+          const statusRaw = (statusResponse as any).result ?? statusResponse;
+          
+          // Extract all car data from contract
+          const brand = carData.brand ?? "My Vehicle";
+          const model = carData.model ?? "Car";
+          const color = carData.color ?? "N/A";
+          const passengersRaw = carData.passengers ?? 4;
+          const passengers = typeof passengersRaw === 'bigint' ? Number(passengersRaw) : Number(passengersRaw);
+          const ac = carData.ac ?? false;
           
           const pricePerDayRaw = carData.price_per_day ?? carData.pricePerDay;
           const pricePerDayInStroops = typeof pricePerDayRaw === 'bigint' 
@@ -154,40 +240,62 @@ export default function Dashboard() {
             : Number(pricePerDayRaw);
           const pricePerDay = pricePerDayInStroops / ONE_XLM_IN_STROOPS;
 
-          const statusRaw = carData.car_status ?? carData.carStatus;
-          const status = statusRaw === "Rented" || statusRaw === 1 
-            ? CarStatus.RENTED 
-            : CarStatus.AVAILABLE;
+          // Parse status
+          let status = CarStatus.AVAILABLE;
+          if (typeof statusRaw === 'string') {
+            status = statusRaw === "Rented" ? CarStatus.RENTED : CarStatus.AVAILABLE;
+          } else if (typeof statusRaw === 'number') {
+            status = statusRaw === 1 ? CarStatus.RENTED : CarStatus.AVAILABLE;
+          } else if (statusRaw?.name === "Rented" || statusRaw?.value === 1) {
+            status = CarStatus.RENTED;
+          }
 
           // If found, add the car and save the owner address
           const foundCar: ICar = {
-            brand: "My Vehicle",
-            model: "Car",
-            color: "N/A",
-            passengers: 4,
+            brand: String(brand),
+            model: String(model),
+            color: String(color),
+            passengers,
             pricePerDay,
-            ac: false,
+            ac: Boolean(ac),
             ownerAddress: walletAddress,
             status,
           };
 
           setCars([foundCar]);
           addOwnerAddress(walletAddress);
-        } catch (error) {
-          // Connected wallet doesn't have a car, that's okay
-          console.log("Connected wallet doesn't have a car registered");
+        } catch (error: any) {
+          // Connected wallet doesn't have a car or error occurred
+          const errorMsg = error?.message || String(error);
+          if (errorMsg.includes("UnreachableCodeReached") ||
+              errorMsg.includes("not found") || 
+              errorMsg.includes("Car not found") ||
+              errorMsg.includes("VM call trapped")) {
+            console.log("Connected wallet doesn't have a car registered");
+          } else {
+            console.error("Error checking wallet for car:", error);
+          }
         }
       } catch (error) {
         console.error("Error checking wallet for cars:", error);
       }
     };
 
-    // Auto-sync when wallet is connected and we have no cars
-    if (cars.length === 0) {
-      void autoSync();
-    }
+    // Always auto-sync when wallet connects to get fresh data from contract
+    void autoSync();
+    
+    // For renters, if no cars are found after auto-sync, show the discover modal
+    // This runs after a delay to let autoSync complete
+    const checkRenterDiscovery = setTimeout(() => {
+      const storedAddresses = getStoredOwnerAddresses();
+      if (selectedRole === UserRole.RENTER && cars.length === 0 && storedAddresses.length === 0) {
+        setShowSyncModal(true);
+      }
+    }, 2000);
+    
+    return () => clearTimeout(checkRenterDiscovery);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [walletAddress]); // Trigger when walletAddress changes (wallet connects)
+  }, [walletAddress, selectedRole]); // Trigger when walletAddress or role changes
 
   const handleCreateCar = async (formData: CreateCar) => {
     const { brand, model, color, passengers, pricePerDay, ac, ownerAddress, commissionPercentage } =
@@ -200,6 +308,11 @@ export default function Dashboard() {
 
     const addCarResult = await contractClient.add_car({
       owner: ownerAddress,
+      brand,
+      model,
+      color,
+      passengers,
+      ac,
       price_per_day: pricePerDay * ONE_XLM_IN_STROOPS,
       commission_percentage: commissionBasisPoints,
     });
@@ -272,25 +385,39 @@ export default function Dashboard() {
           </div>
 
           <div className="flex items-center gap-3">
-            {cars.length === 0 && walletAddress && (
-              <button
-                type="button"
-                onClick={syncCarsFromContract}
-                disabled={isSyncing}
-                className="group flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-              >
-                {isSyncing ? (
-                  <>
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span>Syncing...</span>
-                  </>
-                ) : (
-                  <>
-                    <Icon.ArrowUp className="w-5 h-5" />
-                    <span>Sync from Contract</span>
-                  </>
+            {walletAddress && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => void syncCarsFromContract()}
+                  disabled={isSyncing}
+                  className="group flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-700 hover:to-purple-800 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+                  title="Refresh cars from contract"
+                >
+                  {isSyncing ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Refreshing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Icon.ArrowUp className="w-5 h-5" />
+                      <span>Refresh</span>
+                    </>
+                  )}
+                </button>
+                {selectedRole === UserRole.RENTER && (
+                  <button
+                    type="button"
+                    onClick={() => setShowSyncModal(true)}
+                    className="group flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+                    title="Discover cars by entering owner addresses"
+                  >
+                    <Icon.Car01 className="w-5 h-5" />
+                    <span>Discover Cars</span>
+                  </button>
                 )}
-              </button>
+              </>
             )}
             {selectedRole === UserRole.ADMIN && (
               <button
@@ -364,6 +491,8 @@ export default function Dashboard() {
               <p className="text-gray-600 mb-6 max-w-md mx-auto">
                 {selectedRole === UserRole.ADMIN
                   ? "Get started by adding your first vehicle to the fleet."
+                  : selectedRole === UserRole.RENTER
+                  ? "Discover available cars by entering owner addresses. Click 'Discover Cars' to get started!"
                   : "There are no vehicles available at the moment. Check back soon!"}
               </p>
               {selectedRole === UserRole.ADMIN && (
@@ -376,6 +505,16 @@ export default function Dashboard() {
                   <span>Add Your First Vehicle</span>
                 </button>
               )}
+              {selectedRole === UserRole.RENTER && walletAddress && (
+                <button
+                  type="button"
+                  onClick={() => setShowSyncModal(true)}
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105"
+                >
+                  <Icon.Car01 className="w-5 h-5" />
+                  <span>Discover Available Cars</span>
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -385,13 +524,23 @@ export default function Dashboard() {
           <CreateCarForm onCreateCar={handleCreateCar} onCancel={closeModal} />
         )}
 
-        {/* Sync Modal */}
-        {showSyncModal && (
+        {/* Discover Cars Modal - New component for renters */}
+        {showSyncModal && selectedRole === UserRole.RENTER && walletAddress && (
+          <DiscoverCarsForm
+            walletAddress={walletAddress}
+            onDiscoverCars={async (ownerAddresses: string[]) => {
+              await syncCarsFromContract(ownerAddresses);
+            }}
+            onCancel={() => setShowSyncModal(false)}
+          />
+        )}
+
+        {/* Sync Modal - Legacy for non-renters */}
+        {showSyncModal && selectedRole !== UserRole.RENTER && (
           <Modal title="Sync Cars from Contract" closeModal={() => setShowSyncModal(false)}>
             <div className="space-y-4">
               <p className="text-white/80 text-sm mb-4">
-                Enter the owner addresses (one per line) to sync cars from the contract. 
-                Addresses must start with 'G'.
+                Enter the owner addresses (one per line) to sync cars from the contract. Addresses must start with 'G'.
               </p>
               
               <div>

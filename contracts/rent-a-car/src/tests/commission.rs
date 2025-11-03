@@ -24,8 +24,14 @@ pub fn test_rental_with_percentage_commission() {
     env.mock_all_auths();
     token_admin.mint(&renter, &amount_mint);
 
+    let brand = soroban_sdk::String::from_slice(&env, "TestBrand");
+    let model = soroban_sdk::String::from_slice(&env, "TestModel");
+    let color = soroban_sdk::String::from_slice(&env, "Black");
+    let passengers = 4_u32;
+    let ac = true;
+
     env.mock_all_auths();
-    contract.add_car(&owner, &price_per_day, &commission_percentage);
+    contract.add_car(&owner, &brand, &model, &color, &passengers, &ac, &price_per_day, &commission_percentage);
 
     // Calculate expected commission: 5% of 4500 = 225
     let expected_commission = (amount * commission_percentage) / 10000_i128;
@@ -65,8 +71,14 @@ pub fn test_withdraw_admin_commissions() {
     env.mock_all_auths();
     token_admin.mint(&renter, &amount_mint);
 
+    let brand = soroban_sdk::String::from_slice(&env, "TestBrand");
+    let model = soroban_sdk::String::from_slice(&env, "TestModel");
+    let color = soroban_sdk::String::from_slice(&env, "Black");
+    let passengers = 4_u32;
+    let ac = true;
+
     env.mock_all_auths();
-    contract.add_car(&owner, &price_per_day, &commission_percentage);
+    contract.add_car(&owner, &brand, &model, &color, &passengers, &ac, &price_per_day, &commission_percentage);
 
     env.mock_all_auths();
     contract.rental(&renter, &owner, &total_days, &amount);
