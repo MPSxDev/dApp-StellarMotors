@@ -1,3 +1,4 @@
+import { Icon } from "@stellar/design-system";
 import { useState } from "react";
 import { CreateCar } from "../interfaces/create-car";
 import Modal from "./Modal";
@@ -20,19 +21,46 @@ export const CreateCarForm = ({
     pricePerDay: 0,
     ac: false,
     ownerAddress: "",
+    commissionPercentage: 5, // Default 5%
+  });
+
+  // Keep string values for number inputs while typing
+  const [numberInputs, setNumberInputs] = useState<Record<string, string>>({
+    passengers: "1",
+    pricePerDay: "0",
+    commissionPercentage: "5",
   });
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]:
-        type === "checkbox"
-          ? checked
-          : type === "number"
-            ? Number(value)
-            : value,
-    }));
+    
+    if (type === "checkbox") {
+      setFormData((prev) => ({
+        ...prev,
+        [name]: checked,
+      }));
+    } else if (type === "number") {
+      // Keep string value for display while typing
+      setNumberInputs((prev) => ({
+        ...prev,
+        [name]: value,
+      }));
+      
+      // Update actual formData with numeric value
+      const numValue = value === "" 
+        ? (name === "commissionPercentage" ? 0 : (name === "passengers" ? 1 : 0))
+        : Number(value);
+      
+      setFormData((prev) => ({
+        ...prev,
+        [name]: numValue,
+      }));
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        [name]: value,
+      }));
+    }
   };
 
   const handleSubmit = async (
@@ -50,149 +78,182 @@ export const CreateCarForm = ({
     }
   };
 
-  return (
-    <Modal title="Create New Car" closeModal={onCancel}>
-      <div className="bg-white rounded-lg px-8">
-        <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
-          <div>
-            <label
-              htmlFor="brand"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Brand
-            </label>
-            <input
-              id="brand"
-              name="brand"
-              type="text"
-              value={formData.brand}
-              onChange={handleChange}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-1"
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="model"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Model
-            </label>
-            <input
-              id="model"
-              name="model"
-              type="text"
-              value={formData.model}
-              onChange={handleChange}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-1"
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="color"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Color
-            </label>
-            <input
-              id="color"
-              name="color"
-              type="text"
-              value={formData.color}
-              onChange={handleChange}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-1"
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="passengers"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Number of Passengers
-            </label>
-            <input
-              id="passengers"
-              name="passengers"
-              type="number"
-              min="1"
-              max="10"
-              value={formData.passengers}
-              onChange={handleChange}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-1"
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="pricePerDay"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Price per Day
-            </label>
-            <input
-              id="pricePerDay"
-              name="pricePerDay"
-              type="number"
-              min="0"
-              value={formData.pricePerDay}
-              onChange={handleChange}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-1"
-            />
-          </div>
-
-          <div>
-            <label
-              htmlFor="ownerAddress"
-              className="block text-sm font-medium text-gray-700"
-            >
-              Owner Address
-            </label>
-            <input
-              id="ownerAddress"
-              name="ownerAddress"
-              type="text"
-              value={formData.ownerAddress}
-              onChange={handleChange}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-1"
-            />
-          </div>
-
-          <div className="flex items-center">
-            <input
-              id="ac"
-              name="ac"
-              type="checkbox"
-              checked={formData.ac}
-              onChange={handleChange}
-              className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-            />
-            <label htmlFor="ac" className="ml-2 block text-sm text-gray-700">
-              Air Conditioning
-            </label>
-          </div>
-
-          <div className="flex justify-end gap-4 space-x-3 pt-2 pb-6">
-            {onCancel && (
-              <button
-                type="button"
-                onClick={onCancel}
-                className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 cursor-pointer"
-              >
-                Cancel
-              </button>
-            )}
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 cursor-pointer"
-            >
-              {isSubmitting ? "Creating..." : "Create Car"}
-            </button>
-          </div>
-        </form>
+  const renderInputField = (
+    label: string,
+    name: string,
+    type: string = "text",
+    icon?: React.ReactNode,
+    placeholder?: string,
+    required: boolean = false,
+    min?: number,
+    max?: number,
+  ) => {
+    const inputValue = type === "number" 
+      ? (numberInputs[name] ?? String(formData[name as keyof CreateCar] ?? ""))
+      : (formData[name as keyof CreateCar] ?? "");
+    
+    return (
+      <div>
+        <label
+          htmlFor={name}
+          className="block text-sm font-semibold text-white/90 mb-2"
+        >
+          {label}
+          {required && <span className="text-red-400 ml-1">*</span>}
+        </label>
+        <div className="relative">
+          {icon && (
+            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-white/50">
+              {icon}
+            </div>
+          )}
+          <input
+            id={name}
+            name={name}
+            type={type}
+            step={type === "number" ? (name === "commissionPercentage" ? "0.01" : "1") : undefined}
+            value={inputValue}
+            onChange={handleChange}
+            placeholder={placeholder}
+            required={required}
+            min={min}
+            max={max}
+            className={`w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-[#00D4FF] focus:border-transparent transition-all duration-200 ${
+              icon ? "pl-11" : ""
+            }`}
+          />
+        </div>
       </div>
+    );
+  };
+
+  return (
+    <Modal title="Add New Vehicle" closeModal={onCancel}>
+      <form onSubmit={(e) => void handleSubmit(e)} className="space-y-6">
+        <div className="grid md:grid-cols-2 gap-6">
+          {renderInputField(
+            "Brand",
+            "brand",
+            "text",
+            <Icon.Car01 className="w-5 h-5" />,
+            "e.g., Tesla, BMW, Mercedes",
+            true
+          )}
+
+          {renderInputField(
+            "Model",
+            "model",
+            "text",
+            <Icon.Car01 className="w-5 h-5" />,
+            "e.g., Model 3, X5, S-Class",
+            true
+          )}
+
+          {renderInputField(
+            "Color",
+            "color",
+            "text",
+            undefined,
+            "e.g., Black, White, Red",
+            true
+          )}
+
+          {renderInputField(
+            "Passengers",
+            "passengers",
+            "number",
+            <Icon.Users01 className="w-5 h-5" />,
+            undefined,
+            true,
+            1,
+            10
+          )}
+
+          {renderInputField(
+            "Price per Day (XLM)",
+            "pricePerDay",
+            "number",
+            <Icon.Wallet02 className="w-5 h-5" />,
+            "0.00",
+            true,
+            0
+          )}
+
+          <div className="md:col-span-2">
+            {renderInputField(
+              "Owner Address",
+              "ownerAddress",
+              "text",
+              <Icon.User01 className="w-5 h-5" />,
+              "Stellar address (G...)",
+              true
+            )}
+          </div>
+
+          <div className="md:col-span-2">
+            {renderInputField(
+              "Commission Percentage (%)",
+              "commissionPercentage",
+              "number",
+              <Icon.Wallet02 className="w-5 h-5" />,
+              "5.00",
+              true,
+              0,
+              100
+            )}
+            <p className="text-xs text-white/50 mt-2 ml-1">
+              Required: Set the commission percentage charged per rental (e.g., 5 for 5%)
+            </p>
+          </div>
+        </div>
+
+        {/* AC Checkbox */}
+        <div className="flex items-center gap-3 p-4 rounded-lg bg-white/5 border border-white/10">
+          <input
+            id="ac"
+            name="ac"
+            type="checkbox"
+            checked={formData.ac}
+            onChange={handleChange}
+            className="w-5 h-5 rounded border-white/30 bg-white/10 text-[#00D4FF] focus:ring-2 focus:ring-[#00D4FF] focus:ring-offset-2 focus:ring-offset-transparent cursor-pointer"
+          />
+          <label
+            htmlFor="ac"
+            className="flex items-center gap-2 text-white/90 font-medium cursor-pointer"
+          >
+            <Icon.CheckCircle className="w-5 h-5 text-[#00D4FF]" />
+            <span>Air Conditioning</span>
+          </label>
+        </div>
+
+        {/* Form Actions */}
+        <div className="flex justify-end gap-4 pt-4 border-t border-white/10">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white font-semibold rounded-lg border border-white/20 transition-all duration-200"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="px-6 py-3 bg-gradient-to-r from-[#00D4FF] to-[#00B8E6] hover:from-[#00B8E6] hover:to-[#0099CC] text-white font-bold rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center gap-2"
+          >
+            {isSubmitting ? (
+              <>
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <span>Creating...</span>
+              </>
+            ) : (
+              <>
+                <Icon.CheckCircle className="w-5 h-5" />
+                <span>Create Vehicle</span>
+              </>
+            )}
+          </button>
+        </div>
+      </form>
     </Modal>
   );
 };

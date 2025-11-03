@@ -7,9 +7,10 @@ pub fn test_add_car_successfully() {
 
     let owner = Address::generate(&env);
     let price_per_day = 1500_i128;
+    let commission_percentage = 500_i128; // 5%
 
     env.mock_all_auths();
-    contract.add_car( &owner, &price_per_day);
+    contract.add_car(&owner, &price_per_day, &commission_percentage);
 
     let stored_car = env.as_contract(&contract.address, || {
         read_car(&env, &owner).unwrap()
@@ -17,4 +18,5 @@ pub fn test_add_car_successfully() {
 
     assert_eq!(stored_car.price_per_day, price_per_day);
     assert_eq!(stored_car.car_status, CarStatus::Available);
+    assert_eq!(stored_car.commission_percentage, commission_percentage);
 }

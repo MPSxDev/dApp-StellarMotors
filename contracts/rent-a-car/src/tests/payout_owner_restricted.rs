@@ -22,7 +22,7 @@ pub fn test_payout_owner_fails_when_car_is_rented() {
     token_admin.mint(&renter, &amount_mint);
 
     env.mock_all_auths();
-    contract.add_car(&owner, &price_per_day);
+    contract.add_car(&owner, &price_per_day, &500_i128); // 5% commission
     
     env.mock_all_auths();
     contract.rental(&renter, &owner, &total_days, &amount);
@@ -53,7 +53,7 @@ pub fn test_payout_owner_succeeds_after_end_rental() {
     token_admin.mint(&renter, &amount_mint);
 
     env.mock_all_auths();
-    contract.add_car(&owner, &price_per_day);
+    contract.add_car(&owner, &price_per_day, &500_i128); // 5% commission
     
     env.mock_all_auths();
     contract.rental(&renter, &owner, &total_days, &amount);

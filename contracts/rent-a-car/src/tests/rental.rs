@@ -8,6 +8,7 @@ pub fn test_rental_car_successfully() {
     let owner = Address::generate(&env);
     let renter = Address::generate(&env);
     let price_per_day = 1500_i128;
+    let commission_percentage = 0_i128; // 0% commission for this test
     let total_days = 3;
     let amount = 4500_i128;
     
@@ -18,7 +19,7 @@ pub fn test_rental_car_successfully() {
     token_admin.mint(&renter, &amount_mint);
 
     env.mock_all_auths();
-    contract.add_car(&owner, &price_per_day);
+    contract.add_car(&owner, &price_per_day, &commission_percentage);
 
     let initial_contract_balance = env.as_contract(&contract.address, || read_contract_balance(&env));
     assert_eq!(initial_contract_balance, 0);

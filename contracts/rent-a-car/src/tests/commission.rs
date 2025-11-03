@@ -1,7 +1,6 @@
 use soroban_sdk::{testutils::Address as _, Address};
 use crate::{
     storage::{
-        commission::read_commission,
         contract_balance::read_contract_balance,
         car::read_car,
     },
@@ -9,44 +8,15 @@ use crate::{
 };
 
 #[test]
-pub fn test_set_commission() {
-    let ContractTest { env, contract, .. } = ContractTest::setup();
-
-    let commission = 500_i128;
-    
-    env.mock_all_auths();
-    contract.set_commission(&commission);
-
-    let stored_commission = env.as_contract(&contract.address, || read_commission(&env));
-    assert_eq!(stored_commission, commission);
-}
-
-#[test]
-pub fn test_get_commission() {
-    let ContractTest { env, contract, .. } = ContractTest::setup();
-
-    // Default commission should be 0
-    let commission = contract.get_commission();
-    assert_eq!(commission, 0);
-
-    let new_commission = 300_i128;
-    env.mock_all_auths();
-    contract.set_commission(&new_commission);
-
-    let stored_commission = contract.get_commission();
-    assert_eq!(stored_commission, new_commission);
-}
-
-#[test]
-pub fn test_rental_with_commission() {
+pub fn test_rental_with_percentage_commission() {
     let ContractTest { env, contract, token, .. } = ContractTest::setup();
 
     let owner = Address::generate(&env);
     let renter = Address::generate(&env);
     let price_per_day = 1500_i128;
+    let commission_percentage = 500_i128; // 5% commission
     let total_days = 3;
     let amount = 4500_i128;
-    let commission = 200_i128;
     
     let (_, token_admin, _) = token;
 
@@ -55,13 +25,11 @@ pub fn test_rental_with_commission() {
     token_admin.mint(&renter, &amount_mint);
 
     env.mock_all_auths();
-    contract.set_commission(&commission);
+    contract.add_car(&owner, &price_per_day, &commission_percentage);
 
-    env.mock_all_auths();
-    contract.add_car(&owner, &price_per_day);
-
-    // 💰 Depósito + Comisión: El total debe ser amount + commission
-    let total_expected = amount + commission;
+    // Calculate expected commission: 5% of 4500 = 225
+    let expected_commission = (amount * commission_percentage) / 10000_i128;
+    let total_expected = amount + expected_commission;
 
     env.mock_all_auths();
     contract.rental(&renter, &owner, &total_days, &amount);
@@ -76,7 +44,7 @@ pub fn test_rental_with_commission() {
 
     // Verificar que la comisión se acumuló para el admin
     let admin_commission_balance = contract.get_admin_commission_balance();
-    assert_eq!(admin_commission_balance, commission);
+    assert_eq!(admin_commission_balance, expected_commission);
 }
 
 #[test]
@@ -87,9 +55,9 @@ pub fn test_withdraw_admin_commissions() {
     let owner = Address::generate(&env);
     let renter = Address::generate(&env);
     let price_per_day = 1500_i128;
+    let commission_percentage = 500_i128; // 5% commission
     let total_days = 3;
     let amount = 4500_i128;
-    let commission = 300_i128;
     
     let (token_client, token_admin, _) = token;
 
@@ -98,17 +66,17 @@ pub fn test_withdraw_admin_commissions() {
     token_admin.mint(&renter, &amount_mint);
 
     env.mock_all_auths();
-    contract.set_commission(&commission);
-
-    env.mock_all_auths();
-    contract.add_car(&owner, &price_per_day);
+    contract.add_car(&owner, &price_per_day, &commission_percentage);
 
     env.mock_all_auths();
     contract.rental(&renter, &owner, &total_days, &amount);
 
+    // Calculate expected commission: 5% of 4500 = 225
+    let expected_commission = (amount * commission_percentage) / 10000_i128;
+    
     // Verificar que hay comisiones acumuladas
     let admin_commission_balance_before = contract.get_admin_commission_balance();
-    assert_eq!(admin_commission_balance_before, commission);
+    assert_eq!(admin_commission_balance_before, expected_commission);
 
     // Obtener balance inicial del admin
     let admin_balance_before = token_client.balance(&admin);
@@ -123,7 +91,7 @@ pub fn test_withdraw_admin_commissions() {
 
     // Verificar que el admin recibió los fondos
     let admin_balance_after = token_client.balance(&admin);
-    assert_eq!(admin_balance_after - admin_balance_before, commission);
+    assert_eq!(admin_balance_after - admin_balance_before, expected_commission);
 
     // Verificar que el balance del contrato disminuyó
     let contract_balance = env.as_contract(&contract.address, || read_contract_balance(&env));

@@ -65,7 +65,15 @@ export const StellarAccountProvider: React.FC<{
 
   const [cars, setCars] = useState<ICar[]>(() => {
     const savedCars = localStorage.getItem("cars");
-    return savedCars ? (JSON.parse(savedCars) as ICar[]) : [];
+    const parsedCars = savedCars ? (JSON.parse(savedCars) as ICar[]) : [];
+    
+    // Populate owner addresses when cars are loaded
+    if (parsedCars.length > 0) {
+      const ownerAddresses = parsedCars.map(car => car.ownerAddress);
+      localStorage.setItem("carOwnerAddresses", JSON.stringify(ownerAddresses));
+    }
+    
+    return parsedCars;
   });
 
   const setCurrentAccount = useCallback((name: string) => {

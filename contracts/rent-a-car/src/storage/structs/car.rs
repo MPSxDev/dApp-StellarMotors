@@ -8,4 +8,5 @@ pub struct Car {
     pub price_per_day: i128,
     pub car_status: CarStatus,
     pub available_to_withdraw: i128,
+    pub commission_percentage: i128, // Commission percentage in basis points (1% = 100, 5% = 500, etc.)
 }

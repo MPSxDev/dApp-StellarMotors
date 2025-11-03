@@ -9,6 +9,7 @@ pub fn test_unauthorized_user_cannot_add_car() {
     let fake_admin = Address::generate(&env);
     let owner = Address::generate(&env);
     let price_per_day = 1500_i128;
+    let commission_percentage = 500_i128; // 5%
 
     contract
         .mock_auths(&[MockAuth {
@@ -16,10 +17,9 @@ pub fn test_unauthorized_user_cannot_add_car() {
             invoke: &MockAuthInvoke {
                 contract: &contract.address.clone(),
                 fn_name: "add_car",
-                args: (owner.clone(), price_per_day).into_val(&env),
+                args: (owner.clone(), price_per_day, commission_percentage).into_val(&env),
                 sub_invokes: &[],
             },
         }])
-        .add_car(&owner, &price_per_day);
+        .add_car(&owner, &price_per_day, &commission_percentage);
 }
-

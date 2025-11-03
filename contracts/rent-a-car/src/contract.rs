@@ -39,7 +39,7 @@ impl RentACarContractTrait for RentACarContract {
         read_admin(env).unwrap_or_else(|_| panic!("Contract not initialized"))
     }
 
-    fn add_car(env: &Env, owner: Address, price_per_day: i128) {
+    fn add_car(env: &Env, owner: Address, price_per_day: i128, commission_percentage: i128) {
         let admin = read_admin(env).unwrap_or_else(|_| panic!("Contract not initialized"));
         admin.require_auth();
         
@@ -49,6 +49,7 @@ impl RentACarContractTrait for RentACarContract {
             price_per_day,
             car_status: CarStatus::Available,
             available_to_withdraw: 0,
+            commission_percentage,
         };
 
         write_car(env, &owner, &car);
