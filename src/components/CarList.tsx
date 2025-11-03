@@ -65,14 +65,29 @@ export const CarsList = ({ cars }: CarsListProps) => {
             const statusResponse = await contractClient.get_car_status({ owner: car.ownerAddress });
             const statusRaw = (statusResponse as any).result ?? statusResponse;
             
-            // Parse status correctly
+            // Also check car_status from carData (might have different format)
+            const carStatusFromData = carData.car_status || carData.carStatus;
+            
+            // Parse status correctly - handle multiple formats
             let currentStatus = CarStatus.AVAILABLE;
+            
+            // Check statusRaw first
             if (typeof statusRaw === 'string') {
               currentStatus = statusRaw === "Rented" ? CarStatus.RENTED : CarStatus.AVAILABLE;
             } else if (typeof statusRaw === 'number') {
               currentStatus = statusRaw === 1 ? CarStatus.RENTED : CarStatus.AVAILABLE;
-            } else if (statusRaw?.name === "Rented" || statusRaw?.value === 1) {
+            } else if (statusRaw?.name === "Rented" || statusRaw?.value === 1 || statusRaw?.tag === "Rented") {
               currentStatus = CarStatus.RENTED;
+            }
+            // Also check car_status from carData
+            else if (carStatusFromData) {
+              if (typeof carStatusFromData === 'string') {
+                currentStatus = carStatusFromData === "Rented" ? CarStatus.RENTED : CarStatus.AVAILABLE;
+              } else if (typeof carStatusFromData === 'number') {
+                currentStatus = carStatusFromData === 1 ? CarStatus.RENTED : CarStatus.AVAILABLE;
+              } else if (carStatusFromData?.name === "Rented" || carStatusFromData?.value === 1 || carStatusFromData?.tag === "Rented") {
+                currentStatus = CarStatus.RENTED;
+              }
             }
             
             // Check if current user has rented this car (for all cars when user is renter)
@@ -87,7 +102,8 @@ export const CarsList = ({ cars }: CarsListProps) => {
                 // If get_rental succeeds, the user has rented this car
                 isRentedByUser = true;
               } catch (rentalError: any) {
-                // If get_rental fails, the user hasn't rented this car
+                // If get_rental fails (rental not found), the user hasn't rented this car
+                // This is expected for most cars, so we don't log it
                 isRentedByUser = false;
               }
             }
@@ -157,10 +173,11 @@ export const CarsList = ({ cars }: CarsListProps) => {
         const withdrawMap: Record<string, number> = {};
         const rentedCarsSet = new Set<string>();
         
-        results.forEach(({ owner, commission, availableToWithdraw, isRentedByUser }) => {
+        results.forEach(({ owner, commission, availableToWithdraw, isRentedByUser, status }) => {
           commissionMap[owner] = commission;
           withdrawMap[owner] = availableToWithdraw;
-          if (isRentedByUser) {
+          // Only mark as rented if user has rented it AND car status is RENTED
+          if (isRentedByUser && status === CarStatus.RENTED) {
             rentedCarsSet.add(owner);
           }
         });
@@ -364,8 +381,10 @@ export const CarsList = ({ cars }: CarsListProps) => {
     }
 
     if (selectedRole === UserRole.RENTER) {
-      // FIRST check if current user has rented this car - show Return Vehicle if they have
-      if (userRentedCars.has(car.ownerAddress)) {
+      // Show "Return Vehicle" ONLY if:
+      // 1. User has rented this car AND
+      // 2. Car status is RENTED
+      if (userRentedCars.has(car.ownerAddress) && car.status === CarStatus.RENTED) {
         return (
           <button
             type="button"
@@ -377,8 +396,10 @@ export const CarsList = ({ cars }: CarsListProps) => {
           </button>
         );
       }
-      // Only show "Rent Now" if car is available AND user hasn't rented it
-      else if (car.status === CarStatus.AVAILABLE) {
+      // Show "Rent Now" ONLY if:
+      // 1. Car is AVAILABLE AND
+      // 2. User hasn't rented it
+      if (car.status === CarStatus.AVAILABLE && !userRentedCars.has(car.ownerAddress)) {
         return (
           <button
             type="button"
@@ -390,7 +411,7 @@ export const CarsList = ({ cars }: CarsListProps) => {
           </button>
         );
       }
-      // If car is rented by someone else, don't show any button
+      // If car is rented by someone else (RENTED but not by current user), don't show any button
     }
 
     return null;

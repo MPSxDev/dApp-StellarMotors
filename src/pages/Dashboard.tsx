@@ -100,14 +100,29 @@ export default function Dashboard() {
             : Number(pricePerDayRaw);
           const pricePerDay = pricePerDayInStroops / ONE_XLM_IN_STROOPS;
 
-          // Parse status correctly - handle both string and numeric values
+          // Also check car_status from carData (might have different format)
+          const carStatusFromData = carData.car_status || carData.carStatus;
+
+          // Parse status correctly - handle multiple formats including tag property
           let status = CarStatus.AVAILABLE;
+          
+          // Check statusRaw first
           if (typeof statusRaw === 'string') {
             status = statusRaw === "Rented" ? CarStatus.RENTED : CarStatus.AVAILABLE;
           } else if (typeof statusRaw === 'number') {
             status = statusRaw === 1 ? CarStatus.RENTED : CarStatus.AVAILABLE;
-          } else if (statusRaw?.name === "Rented" || statusRaw?.value === 1) {
+          } else if (statusRaw?.name === "Rented" || statusRaw?.value === 1 || statusRaw?.tag === "Rented") {
             status = CarStatus.RENTED;
+          }
+          // Also check car_status from carData (handles { tag: "Rented" } format)
+          else if (carStatusFromData) {
+            if (typeof carStatusFromData === 'string') {
+              status = carStatusFromData === "Rented" ? CarStatus.RENTED : CarStatus.AVAILABLE;
+            } else if (typeof carStatusFromData === 'number') {
+              status = carStatusFromData === 1 ? CarStatus.RENTED : CarStatus.AVAILABLE;
+            } else if (carStatusFromData?.name === "Rented" || carStatusFromData?.value === 1 || carStatusFromData?.tag === "Rented") {
+              status = CarStatus.RENTED;
+            }
           }
           
           return {
